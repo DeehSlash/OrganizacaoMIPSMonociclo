@@ -1,0 +1,399 @@
+-- Copyright (C) 1991-2013 Altera Corporation
+-- Your use of Altera Corporation's design tools, logic functions 
+-- and other software and tools, and its AMPP partner logic 
+-- functions, and any output files from any of the foregoing 
+-- (including device programming or simulation files), and any 
+-- associated documentation or information are expressly subject 
+-- to the terms and conditions of the Altera Program License 
+-- Subscription Agreement, Altera MegaCore Function License 
+-- Agreement, or other applicable license agreement, including, 
+-- without limitation, that your use is for the sole purpose of 
+-- programming logic devices manufactured by Altera and sold by 
+-- Altera or its authorized distributors.  Please refer to the 
+-- applicable agreement for further details.
+
+-- PROGRAM		"Quartus II 64-Bit"
+-- VERSION		"Version 13.0.1 Build 232 06/12/2013 Service Pack 1 SJ Web Edition"
+-- CREATED		"Mon Jun 06 13:21:22 2016"
+
+LIBRARY ieee;
+USE ieee.std_logic_1164.all; 
+
+LIBRARY work;
+
+ENTITY mips_mono IS 
+	PORT
+	(
+		reset :  IN  STD_LOGIC;
+		clock :  IN  STD_LOGIC;
+		Branch :  OUT  STD_LOGIC;
+		MemWrite :  OUT  STD_LOGIC;
+		RegWrite :  OUT  STD_LOGIC;
+		MemToReg :  OUT  STD_LOGIC;
+		ALUSrc :  OUT  STD_LOGIC;
+		RegDst :  OUT  STD_LOGIC;
+		clkSys :  OUT  STD_LOGIC;
+		Jump :  OUT  STD_LOGIC;
+		ALUOp :  OUT  STD_LOGIC_VECTOR(1 DOWNTO 0);
+		function :  OUT  STD_LOGIC_VECTOR(5 DOWNTO 0);
+		imed16 :  OUT  STD_LOGIC_VECTOR(15 DOWNTO 0);
+		imed26 :  OUT  STD_LOGIC_VECTOR(25 DOWNTO 0);
+		Instruction :  OUT  STD_LOGIC_VECTOR(31 DOWNTO 0);
+		nextPC :  OUT  STD_LOGIC_VECTOR(31 DOWNTO 0);
+		op :  OUT  STD_LOGIC_VECTOR(31 DOWNTO 26);
+		Operation :  OUT  STD_LOGIC_VECTOR(2 DOWNTO 0);
+		PC :  OUT  STD_LOGIC_VECTOR(31 DOWNTO 0);
+		rd :  OUT  STD_LOGIC_VECTOR(15 DOWNTO 11);
+		rs :  OUT  STD_LOGIC_VECTOR(25 DOWNTO 21);
+		rt :  OUT  STD_LOGIC_VECTOR(20 DOWNTO 16);
+		shamt :  OUT  STD_LOGIC_VECTOR(10 DOWNTO 6)
+	);
+END mips_mono;
+
+ARCHITECTURE bdf_type OF mips_mono IS 
+
+ATTRIBUTE black_box : BOOLEAN;
+ATTRIBUTE noopt : BOOLEAN;
+
+COMPONENT lpm_constant_0
+	PORT(		 result : OUT STD_LOGIC_VECTOR(31 DOWNTO 0));
+END COMPONENT;
+ATTRIBUTE black_box OF lpm_constant_0: COMPONENT IS true;
+ATTRIBUTE noopt OF lpm_constant_0: COMPONENT IS true;
+
+COMPONENT \2bit_left_shifter_26-28bit\
+	PORT(D : IN STD_LOGIC_VECTOR(25 DOWNTO 0);
+		 Q : OUT STD_LOGIC_VECTOR(27 DOWNTO 0)
+	);
+END COMPONENT;
+
+COMPONENT jump_concatenator
+	PORT(D : IN STD_LOGIC_VECTOR(27 DOWNTO 0);
+		 PC : IN STD_LOGIC_VECTOR(3 DOWNTO 0);
+		 Q : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+	);
+END COMPONENT;
+
+COMPONENT alu_operation
+	PORT(ALUOp : IN STD_LOGIC_VECTOR(1 DOWNTO 0);
+		 F : IN STD_LOGIC_VECTOR(5 DOWNTO 0);
+		 Operation : OUT STD_LOGIC_VECTOR(2 DOWNTO 0)
+	);
+END COMPONENT;
+
+COMPONENT mux_2x1_32bit
+	PORT(sel : IN STD_LOGIC;
+		 A : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 B : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 S : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+	);
+END COMPONENT;
+
+COMPONENT adder_32bit
+	PORT(a : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 b : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 Resultado : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+	);
+END COMPONENT;
+
+COMPONENT signal_ext_32bit
+	PORT(D : IN STD_LOGIC_VECTOR(15 DOWNTO 0);
+		 Q : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+	);
+END COMPONENT;
+
+COMPONENT \2bit_left_shifter_32bit\
+	PORT(D : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 Q : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+	);
+END COMPONENT;
+
+COMPONENT mux_2x1_5bit
+	PORT(sel : IN STD_LOGIC;
+		 A : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+		 B : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+		 S : OUT STD_LOGIC_VECTOR(4 DOWNTO 0)
+	);
+END COMPONENT;
+
+COMPONENT bank_reg_32x32bit
+	PORT(clk : IN STD_LOGIC;
+		 rst : IN STD_LOGIC;
+		 wr : IN STD_LOGIC;
+		 Rd_Addr_A : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+		 Rd_Addr_B : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+		 Wr_Addr : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+		 Wr_Data : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 Rd_Data_A : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 Rd_Data_B : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+	);
+END COMPONENT;
+
+COMPONENT data_memory
+	PORT(clk : IN STD_LOGIC;
+		 write : IN STD_LOGIC;
+		 address : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 din : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 dout : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+	);
+END COMPONENT;
+
+COMPONENT control
+	PORT(clk : IN STD_LOGIC;
+		 Op : IN STD_LOGIC_VECTOR(5 DOWNTO 0);
+		 RegDst : OUT STD_LOGIC;
+		 ALUSrc : OUT STD_LOGIC;
+		 MemToReg : OUT STD_LOGIC;
+		 RegWrite : OUT STD_LOGIC;
+		 MemWrite : OUT STD_LOGIC;
+		 Branch : OUT STD_LOGIC;
+		 Jump : OUT STD_LOGIC;
+		 ALUOp1 : OUT STD_LOGIC;
+		 ALUOp0 : OUT STD_LOGIC
+	);
+END COMPONENT;
+
+COMPONENT divisorfrequencia
+	PORT(clock : IN STD_LOGIC;
+		 out : OUT STD_LOGIC
+	);
+END COMPONENT;
+
+COMPONENT instruction_memory
+	PORT(clk : IN STD_LOGIC;
+		 address : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 instruction : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+	);
+END COMPONENT;
+
+COMPONENT program_counter
+	PORT(rst : IN STD_LOGIC;
+		 clk : IN STD_LOGIC;
+		 nextPC : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 PC : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+	);
+END COMPONENT;
+
+COMPONENT alu_32bit
+	PORT(InvB : IN STD_LOGIC;
+		 a : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 b : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+		 Operation : IN STD_LOGIC_VECTOR(1 DOWNTO 0);
+		 Zero : OUT STD_LOGIC;
+		 Overflow : OUT STD_LOGIC;
+		 Result : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+	);
+END COMPONENT;
+
+SIGNAL	ALUOp_ALTERA_SYNTHESIZED :  STD_LOGIC_VECTOR(1 DOWNTO 0);
+SIGNAL	ALUSrc_ALTERA_SYNTHESIZED :  STD_LOGIC;
+SIGNAL	Branch_ALTERA_SYNTHESIZED :  STD_LOGIC;
+SIGNAL	clk :  STD_LOGIC;
+SIGNAL	clkMem :  STD_LOGIC;
+SIGNAL	Instruction_ALTERA_SYNTHESIZED :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	Jump_ALTERA_SYNTHESIZED :  STD_LOGIC;
+SIGNAL	MemToReg_ALTERA_SYNTHESIZED :  STD_LOGIC;
+SIGNAL	MemWrite_ALTERA_SYNTHESIZED :  STD_LOGIC;
+SIGNAL	Operation_ALTERA_SYNTHESIZED :  STD_LOGIC_VECTOR(2 DOWNTO 0);
+SIGNAL	PC_ALTERA_SYNTHESIZED :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	PC_plus_4 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	RD_DATA_A :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	RegDst_ALTERA_SYNTHESIZED :  STD_LOGIC;
+SIGNAL	RegWrite_ALTERA_SYNTHESIZED :  STD_LOGIC;
+SIGNAL	rst :  STD_LOGIC;
+SIGNAL	SYNTHESIZED_WIRE_0 :  STD_LOGIC_VECTOR(27 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_19 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_20 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_3 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_5 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_21 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_7 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_8 :  STD_LOGIC;
+SIGNAL	SYNTHESIZED_WIRE_9 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_10 :  STD_LOGIC;
+SIGNAL	SYNTHESIZED_WIRE_11 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_12 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_13 :  STD_LOGIC_VECTOR(4 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_14 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_17 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+SIGNAL	SYNTHESIZED_WIRE_18 :  STD_LOGIC_VECTOR(31 DOWNTO 0);
+
+SIGNAL	GDFX_TEMP_SIGNAL_0 :  STD_LOGIC_VECTOR(3 DOWNTO 0);
+
+BEGIN 
+nextPC <= SYNTHESIZED_WIRE_17;
+
+GDFX_TEMP_SIGNAL_0 <= (PC_plus_4(28) & PC_plus_4(29) & PC_plus_4(30) & PC_plus_4(31));
+
+
+b2v_0 : \2bit_left_shifter_26-28bit\
+PORT MAP(D => Instruction_ALTERA_SYNTHESIZED(25 DOWNTO 0),
+		 Q => SYNTHESIZED_WIRE_0);
+
+
+b2v_1 : jump_concatenator
+PORT MAP(D => SYNTHESIZED_WIRE_0,
+		 PC => GDFX_TEMP_SIGNAL_0,
+		 Q => SYNTHESIZED_WIRE_12);
+
+
+b2v_135 : alu_operation
+PORT MAP(ALUOp => ALUOp_ALTERA_SYNTHESIZED,
+		 F => Instruction_ALTERA_SYNTHESIZED(5 DOWNTO 0),
+		 Operation => Operation_ALTERA_SYNTHESIZED);
+
+
+b2v_177 : mux_2x1_32bit
+PORT MAP(sel => ALUSrc_ALTERA_SYNTHESIZED,
+		 A => SYNTHESIZED_WIRE_19,
+		 B => SYNTHESIZED_WIRE_20,
+		 S => SYNTHESIZED_WIRE_18);
+
+
+b2v_18 : adder_32bit
+PORT MAP(a => PC_ALTERA_SYNTHESIZED,
+		 b => SYNTHESIZED_WIRE_3,
+		 Resultado => PC_plus_4);
+
+
+b2v_23 : signal_ext_32bit
+PORT MAP(D => Instruction_ALTERA_SYNTHESIZED(15 DOWNTO 0),
+		 Q => SYNTHESIZED_WIRE_20);
+
+
+b2v_26 : \2bit_left_shifter_32bit\
+PORT MAP(D => SYNTHESIZED_WIRE_20,
+		 Q => SYNTHESIZED_WIRE_5);
+
+
+b2v_27 : adder_32bit
+PORT MAP(a => PC_plus_4,
+		 b => SYNTHESIZED_WIRE_5,
+		 Resultado => SYNTHESIZED_WIRE_9);
+
+
+b2v_33 : mux_2x1_32bit
+PORT MAP(sel => MemToReg_ALTERA_SYNTHESIZED,
+		 A => SYNTHESIZED_WIRE_21,
+		 B => SYNTHESIZED_WIRE_7,
+		 S => SYNTHESIZED_WIRE_14);
+
+
+b2v_35 : mux_2x1_32bit
+PORT MAP(sel => SYNTHESIZED_WIRE_8,
+		 A => PC_plus_4,
+		 B => SYNTHESIZED_WIRE_9,
+		 S => SYNTHESIZED_WIRE_11);
+
+
+SYNTHESIZED_WIRE_8 <= Branch_ALTERA_SYNTHESIZED AND SYNTHESIZED_WIRE_10;
+
+
+b2v_37 : mux_2x1_32bit
+PORT MAP(sel => Jump_ALTERA_SYNTHESIZED,
+		 A => SYNTHESIZED_WIRE_11,
+		 B => SYNTHESIZED_WIRE_12,
+		 S => SYNTHESIZED_WIRE_17);
+
+
+b2v_48 : lpm_constant_0
+PORT MAP(		 result => SYNTHESIZED_WIRE_3);
+
+
+b2v_50 : mux_2x1_5bit
+PORT MAP(sel => RegDst_ALTERA_SYNTHESIZED,
+		 A => Instruction_ALTERA_SYNTHESIZED(20 DOWNTO 16),
+		 B => Instruction_ALTERA_SYNTHESIZED(15 DOWNTO 11),
+		 S => SYNTHESIZED_WIRE_13);
+
+
+b2v_BancoRegistradores : bank_reg_32x32bit
+PORT MAP(clk => clk,
+		 rst => rst,
+		 wr => RegWrite_ALTERA_SYNTHESIZED,
+		 Rd_Addr_A => Instruction_ALTERA_SYNTHESIZED(25 DOWNTO 21),
+		 Rd_Addr_B => Instruction_ALTERA_SYNTHESIZED(20 DOWNTO 16),
+		 Wr_Addr => SYNTHESIZED_WIRE_13,
+		 Wr_Data => SYNTHESIZED_WIRE_14,
+		 Rd_Data_A => RD_DATA_A,
+		 Rd_Data_B => SYNTHESIZED_WIRE_19);
+
+
+b2v_DataMemory : data_memory
+PORT MAP(clk => clkMem,
+		 write => MemWrite_ALTERA_SYNTHESIZED,
+		 address => SYNTHESIZED_WIRE_21,
+		 din => SYNTHESIZED_WIRE_19,
+		 dout => SYNTHESIZED_WIRE_7);
+
+
+rst <= NOT(reset);
+
+
+
+clkMem <= NOT(clock);
+
+
+
+b2v_inst2 : control
+PORT MAP(clk => clk,
+		 Op => Instruction_ALTERA_SYNTHESIZED(31 DOWNTO 26),
+		 RegDst => RegDst_ALTERA_SYNTHESIZED,
+		 ALUSrc => ALUSrc_ALTERA_SYNTHESIZED,
+		 MemToReg => MemToReg_ALTERA_SYNTHESIZED,
+		 RegWrite => RegWrite_ALTERA_SYNTHESIZED,
+		 MemWrite => MemWrite_ALTERA_SYNTHESIZED,
+		 Branch => Branch_ALTERA_SYNTHESIZED,
+		 Jump => Jump_ALTERA_SYNTHESIZED,
+		 ALUOp1 => ALUOp_ALTERA_SYNTHESIZED(1),
+		 ALUOp0 => ALUOp_ALTERA_SYNTHESIZED(0));
+
+
+b2v_inst4 : divisorfrequencia
+PORT MAP(clock => clkMem,
+		 out => clk);
+
+
+b2v_InstructionMemory : instruction_memory
+PORT MAP(clk => clkMem,
+		 address => PC_ALTERA_SYNTHESIZED,
+		 instruction => Instruction_ALTERA_SYNTHESIZED);
+
+
+b2v_ProgramCounter : program_counter
+PORT MAP(rst => rst,
+		 clk => clk,
+		 nextPC => SYNTHESIZED_WIRE_17,
+		 PC => PC_ALTERA_SYNTHESIZED);
+
+
+b2v_ULA : alu_32bit
+PORT MAP(InvB => Operation_ALTERA_SYNTHESIZED(2),
+		 a => RD_DATA_A,
+		 b => SYNTHESIZED_WIRE_18,
+		 Operation => Operation_ALTERA_SYNTHESIZED(1 DOWNTO 0),
+		 Zero => SYNTHESIZED_WIRE_10,
+		 Result => SYNTHESIZED_WIRE_21);
+
+Branch <= Branch_ALTERA_SYNTHESIZED;
+MemWrite <= MemWrite_ALTERA_SYNTHESIZED;
+RegWrite <= RegWrite_ALTERA_SYNTHESIZED;
+MemToReg <= MemToReg_ALTERA_SYNTHESIZED;
+ALUSrc <= ALUSrc_ALTERA_SYNTHESIZED;
+RegDst <= RegDst_ALTERA_SYNTHESIZED;
+clkSys <= clk;
+Jump <= Jump_ALTERA_SYNTHESIZED;
+ALUOp <= ALUOp_ALTERA_SYNTHESIZED;
+function(5 DOWNTO 0) <= Instruction_ALTERA_SYNTHESIZED(5 DOWNTO 0);
+imed16(15 DOWNTO 0) <= Instruction_ALTERA_SYNTHESIZED(15 DOWNTO 0);
+imed26(25 DOWNTO 0) <= Instruction_ALTERA_SYNTHESIZED(25 DOWNTO 0);
+Instruction <= Instruction_ALTERA_SYNTHESIZED;
+op(31 DOWNTO 26) <= Instruction_ALTERA_SYNTHESIZED(31 DOWNTO 26);
+Operation <= Operation_ALTERA_SYNTHESIZED;
+PC <= PC_ALTERA_SYNTHESIZED;
+rd(15 DOWNTO 11) <= Instruction_ALTERA_SYNTHESIZED(15 DOWNTO 11);
+rs(25 DOWNTO 21) <= Instruction_ALTERA_SYNTHESIZED(25 DOWNTO 21);
+rt(20 DOWNTO 16) <= Instruction_ALTERA_SYNTHESIZED(20 DOWNTO 16);
+shamt(10 DOWNTO 6) <= Instruction_ALTERA_SYNTHESIZED(10 DOWNTO 6);
+
+END bdf_type;
